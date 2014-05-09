@@ -1,8 +1,8 @@
-#include "Canbus.h"
-#include "defaults.h"
-#include "global.h"
-#include "mcp2515.h"
-#include "mcp2515_defs.h"
+#include <Canbus.h>
+#include <defaults.h>
+#include <global.h>
+#include <mcp2515.h>
+#include <mcp2515_defs.h>
 
 
 /* Define Joystick connection */
@@ -46,8 +46,8 @@ void setup() {
   if(Canbus.init(CANSPEED_125))  /* Initialise MCP2515 CAN controller at the specified speed */
   {
     Serial.println("CAN Init ok");
-  } 
-  else {
+  } else
+  {
     Serial.println("Can't init CAN");
   } 
   message.id = 0x70F;
@@ -72,7 +72,6 @@ void loop() {
     digitalWrite(LED2,HIGH);
   }
   
-  //helljus på
   if (digitalRead(UP) == 0) {
       Serial.println("UP");
       message.id = 0x70F;
@@ -86,16 +85,12 @@ void loop() {
       message.data[5] = 0x00;
       message.data[6] = 0x00;
       message.data[7] = 0x00;
-      
-      //skicka meddelandet på bussen
       if(mcp2515_send_message(&message)){
         Serial.println("SENT");
         digitalWrite(LED2, LOW);
       }
       delay(300);
-  }
-  //bromsljus på
-  else if (digitalRead(DOWN) == 0) {
+  }else if (digitalRead(DOWN) == 0) {
       Serial.println("DOWN");
       message.id = 0x301;
       message.header.rtr = 0;
@@ -114,9 +109,7 @@ void loop() {
       }
       delay(300);
       
-  }
-  //blinka vänster
-  else if (digitalRead(LEFT) == 0) {
+  }else if (digitalRead(LEFT) == 0) {
       Serial.println("LEFT");
       message.id = 0x202;
       message.header.rtr = 0;
@@ -128,9 +121,7 @@ void loop() {
       }
       delay(300);
       
-  }
-  //blinka höger
-  else if (digitalRead(RIGHT) == 0) {
+  }else if (digitalRead(RIGHT) == 0) {
       Serial.println("RIGHT");
       message.id = 0x202;
       message.header.rtr = 0;
@@ -149,9 +140,7 @@ void loop() {
       }
       delay(300);
       
-  }
-  //tEXTRA: starta och stoppa motor
-  else if (digitalRead(CLICK) == 0) {
+  }else if (digitalRead(CLICK) == 0) {
       Serial.println("CLICK");
       if(Canbus.message_rx(buffer)){
         Serial.print("Recieved");
@@ -161,4 +150,3 @@ void loop() {
   }
   
 }
-
