@@ -25,8 +25,6 @@
 // LED
 #define LED2 8
 #define LED3 7
-//int LED2 = 8;  <- remove??
-//int LED3 = 7;  <- remove??
 
 tCAN message;
 
@@ -35,6 +33,8 @@ tCAN message;
 
 /* ------------- SETUP ------------- */
 void setup() {
+  
+  Serial.println("\nSetup Started.");
 
   pinMode(LED2, OUTPUT); 
   pinMode(LED3, OUTPUT); 
@@ -57,7 +57,7 @@ void setup() {
   if (Canbus.init(CANSPEED_125)) {
     Serial.println("CAN initialized...");
   } else {
-    Serial.println("CAN initialization ERROR!");
+    Serial.println("CAN initialization error!");
   }
   message.id = 0x00;
   message.header.rtr = 0;
@@ -70,6 +70,8 @@ void setup() {
   message.data[5] = 0x00;
   message.data[6] = 0x00;
   message.data[7] = 0x00;
+  
+  Serial.println("Setup Finished.\n");
 }
 
 /* ------------- LOOP ------------- */
