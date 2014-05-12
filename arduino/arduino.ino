@@ -13,7 +13,6 @@
 // Motor Shield
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
-//#include <Adafruit_PWMServoDriver.h>  <- remove??
 
 // Joystick
 #define UP     A1
@@ -28,13 +27,19 @@
 
 tCAN message;
 
+Adafruit_MotorShield AFMS = Adafruit_MotorShield(); 
+Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // For M1
+
+int motorSpeed = 0;  //motorn körs ej
+void runMotor(int i);
+
+void sendMessage(tCAN *message);
+
 //int led = 13;  <- remove??
 //unsigned char buffer[16];  <- remove??
 
 /* ------------- SETUP ------------- */
 void setup() {
-  
-  Serial.println("\nSetup Started.");
 
   pinMode(LED2, OUTPUT); 
   pinMode(LED3, OUTPUT); 
@@ -53,6 +58,7 @@ void setup() {
   digitalWrite(CLICK, HIGH);
 
   Serial.begin(9600);
+  Serial.println();
 
   if (Canbus.init(CANSPEED_125)) {
     Serial.println("CAN initialized...");
@@ -71,16 +77,16 @@ void setup() {
   message.data[6] = 0x00;
   message.data[7] = 0x00;
   
+  AFMS.begin();
+  myMotor->setSpeed(0);
+  myMotor->run(RELEASE);
+  myMotor->run(FORWARD);
+  
   Serial.println("Setup Finished.\n");
 }
 
 /* ------------- LOOP ------------- */
 void loop() {
-
-  // Read from CAN bus
-  if (mcp2515_check_message()) {
-    digitalWrite(LED2, HIGH);
-  }
 
   // Read from joystick
   if (digitalRead(UP) == 0) {
@@ -89,11 +95,7 @@ void loop() {
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x01;
-    if (mcp2515_send_message(&message)) {
-      Serial.println("SENT");
-      digitalWrite(LED2, LOW);
-    }
-    delay(300);
+    sendMessage(&message);
     
   } else if (digitalRead(DOWN) == 0) {
     Serial.println("DOWN: Bromsljus");
@@ -101,11 +103,8 @@ void loop() {
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x01;
-    if (mcp2515_send_message(&message)) {
-      Serial.println("SENT");
-      digitalWrite(LED2, LOW);
-    }
-    delay(300);
+    
+    sendMessage(&message);
     
   } else if (digitalRead(LEFT) == 0) {
     Serial.println("LEFT: Blinkers");
@@ -113,11 +112,8 @@ void loop() {
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x01;
-    if (mcp2515_send_message(&message)) {
-      Serial.println("SENT");
-      digitalWrite(LED3, LOW);
-    }
-    delay(300);
+    
+    sendMessage(&message);
     
   } else if (digitalRead(RIGHT) == 0) {
     Serial.println("RIGHT: Blinkers");
@@ -125,16 +121,55 @@ void loop() {
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x02;
-    if (mcp2515_send_message(&message)) {
-      Serial.println("SENT");
-      digitalWrite(LED2, HIGH);
-    }
-    delay(300);
+    
+    sendMessage(&message);
     
   } else if (digitalRead(CLICK) == 0) {
     Serial.println("CLICK: Motor");
-    // start or stop motor
+    if (motorSpeed)  {
+      runMotor(0);  //stoppa motorn
+      Serial.println("Stopped");
+    }
+    else  {
+      runMotor(60);  //kör motorn med lägre hastighet
+      Serial.println("RPM: 60");
+    }
     delay(300);
   }
+  
+    // Read from CAN bus
+  if (mcp2515_check_message()) {
+    digitalWrite(LED2, HIGH);
+    if (mcp2515_get_message(&message)) {
+      if (message.header.rtr == 0 && message.id == 0x111)  {
+        runMotor(message.data[0]);
+        Serial.print("RPM: ");
+        Serial.println(message.data[0]);
+      }
+    } else {
+      Serial.println("Error getting message!");
+    }
+  }
+}
+
+void runMotor(int i) {
+  motorSpeed = i;
+  myMotor->run(FORWARD);
+  myMotor->setSpeed(i);
+}
+
+void sendMessage(tCAN *message)  {
+  
+  if (!mcp2515_check_free_buffer())  {
+    Serial.println("Buffer full!");
+  }
+  else if (mcp2515_send_message(message)) {
+      Serial.println("SENT");
+      digitalWrite(LED2, LOW);
+  }
+  else  {
+    Serial.println("Error! Not sent!");
+  }
+  delay(300);
 }
 
