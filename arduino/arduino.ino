@@ -21,26 +21,20 @@
 #define CLICK  A4
 #define LEFT   A5
 
-// LED
+// LED's
 #define LED2 8
 #define LED3 7
 
+// Global Variables
 tCAN message;
-
-Adafruit_MotorShield AFMS = Adafruit_MotorShield(); 
-Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // For M1
-
-int motorSpeed = 0;  //motorn körs ej
-void runMotor(int i);
-
-void sendMessage(tCAN *message);
-
-//int led = 13;  <- remove??
-//unsigned char buffer[16];  <- remove??
+int motorSpeed = 0;
+Adafruit_MotorShield AFMS = Adafruit_MotorShield();
+Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // Port M1
 
 /* ------------- SETUP ------------- */
-void setup() {
 
+void setup()
+{
   pinMode(LED2, OUTPUT); 
   pinMode(LED3, OUTPUT); 
   digitalWrite(LED2, LOW);
@@ -61,7 +55,7 @@ void setup() {
   Serial.println();
 
   if (Canbus.init(CANSPEED_125)) {
-    Serial.println("CAN initialized...");
+    Serial.println("CAN initialized.");
   } else {
     Serial.println("CAN initialization error!");
   }
@@ -79,18 +73,19 @@ void setup() {
   
   AFMS.begin();
   myMotor->setSpeed(0);
-  myMotor->run(RELEASE);
   myMotor->run(FORWARD);
+  myMotor->run(RELEASE);
   
   Serial.println("Setup Finished.\n");
 }
 
 /* ------------- LOOP ------------- */
-void loop() {
 
-  // Read from joystick
+void loop()
+{
+  // Handle joystick input...
   if (digitalRead(UP) == 0) {
-    Serial.println("UP: Helljus");
+    Serial.print("UP: ");
     message.id = 0x133;
     message.header.rtr = 0;
     message.header.length = 1;
@@ -98,78 +93,80 @@ void loop() {
     sendMessage(&message);
     
   } else if (digitalRead(DOWN) == 0) {
-    Serial.println("DOWN: Bromsljus");
+    Serial.print("DOWN: ");
     message.id = 0x122;
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x01;
-    
     sendMessage(&message);
     
   } else if (digitalRead(LEFT) == 0) {
-    Serial.println("LEFT: Blinkers");
+    Serial.print("LEFT: ");
     message.id = 0x144;
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x01;
-    
     sendMessage(&message);
     
   } else if (digitalRead(RIGHT) == 0) {
-    Serial.println("RIGHT: Blinkers");
+    Serial.print("RIGHT: ");
     message.id = 0x144;
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x02;
-    
     sendMessage(&message);
     
   } else if (digitalRead(CLICK) == 0) {
-    Serial.println("CLICK: Motor");
-    if (motorSpeed)  {
-      runMotor(0);  //stoppa motorn
-      Serial.println("Stopped");
+    Serial.print("CLICK: ");
+    if (motorSpeed) { // The motor is running
+      runMotor(0);    // Stop the motor
+    } else {          // The motor is not running
+      runMotor(30);   // Start the motor
     }
-    else  {
-      runMotor(60);  //kör motorn med lägre hastighet
-      Serial.println("RPM: 60");
-    }
-    delay(300);
+    delay(300); // Joystick sensitivity
   }
   
-    // Read from CAN bus
+  // Check if there are any new messages waiting
   if (mcp2515_check_message()) {
     digitalWrite(LED2, HIGH);
+    Serial.print("CAN: ");
     if (mcp2515_get_message(&message)) {
-      if (message.header.rtr == 0 && message.id == 0x111)  {
+      // Look for the motor control message
+      if (message.header.rtr == 0 && message.id == 0x111) {
         runMotor(message.data[0]);
-        Serial.print("RPM: ");
-        Serial.println(message.data[0]);
+      } else {
+        // Not a motor control message
+        Serial.println("wrong formatting");
       }
     } else {
-      Serial.println("Error getting message!");
+      // mcp2515_get_message failed
+      Serial.println("error");
     }
   }
 }
 
-void runMotor(int i) {
-  motorSpeed = i;
-  myMotor->run(FORWARD);
-  myMotor->setSpeed(i);
+/* ----------- FUNCTIONS ----------- */
+
+void sendMessage(tCAN *message)
+{
+  if (!mcp2515_check_free_buffer()) {
+    Serial.println("buffer is full");
+  } else if (mcp2515_send_message(message)) {
+    digitalWrite(LED2, LOW);
+    Serial.println("sent");
+  } else {
+    // mcp2515_send_message failed
+    Serial.println("error");
+  }
+  delay(300); // Joystick sensitivity
 }
 
-void sendMessage(tCAN *message)  {
-  
-  if (!mcp2515_check_free_buffer())  {
-    Serial.println("Buffer full!");
-  }
-  else if (mcp2515_send_message(message)) {
-      Serial.println("SENT");
-      digitalWrite(LED2, LOW);
-  }
-  else  {
-    Serial.println("Error! Not sent!");
-  }
-  delay(300);
+void runMotor(int rpm)
+{
+  motorSpeed = rpm;
+  myMotor->run(FORWARD);
+  myMotor->setSpeed(rpm);
+  Serial.print("RPM ");
+  Serial.println(rpm);
 }
 
