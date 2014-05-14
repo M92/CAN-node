@@ -21,6 +21,10 @@
 #define CLICK  A4
 #define LEFT   A5
 
+//LCD Display
+#include <LiquidCrystal.h>
+#include "utility/Adafruit_PWMServoDriver.h"
+
 // LED's
 #define LED2 8
 #define LED3 7
@@ -30,6 +34,8 @@ tCAN message;
 int motorSpeed = 0;
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // Port M1
+LiquidCrystal lcd(12,11,5,4,3,2);
+
 
 /* ------------- SETUP ------------- */
 
@@ -39,6 +45,10 @@ void setup()
   pinMode(LED3, OUTPUT); 
   digitalWrite(LED2, LOW);
   digitalWrite(LED3, LOW);
+  
+  //LCD
+  lcd.begin(16,2); 
+  lcd.print("Motor RMPM");
 
   pinMode(UP, INPUT);
   pinMode(DOWN, INPUT);
@@ -168,5 +178,18 @@ void runMotor(int rpm)
   myMotor->setSpeed(rpm);
   Serial.print("RPM ");
   Serial.println(rpm);
-}
-
+  lcdPrintPRM(rpm);
+  }
+  
+void lcdPrintRPM(int i ) 
+{
+  char* Str1[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
+  lcd.setCursor(0,0);
+  lcd.print("Motor RPM ");
+  lcd.print(i);
+  val = map(i, 0,256, 0,17);
+  lcd.setCursor(0,1);
+  lcd.print(Str1[val]);
+  delay(50);
+  lcd.clear();
+  }
