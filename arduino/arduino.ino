@@ -178,11 +178,12 @@ void runMotor(int rpm)
   myMotor->setSpeed(rpm);
   Serial.print("RPM ");
   Serial.println(rpm);
-  lcdPrintPRM(rpm);
+  lcdPrintRPM(rpm);
   }
   
 void lcdPrintRPM(int i ) 
 {
+  int val;
   char* Str1[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
   lcd.setCursor(0,0);
   lcd.print("Motor RPM ");
