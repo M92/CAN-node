@@ -24,28 +24,19 @@
 #define CLICK  A4
 #define LEFT   A5
 
-// LED's
-#define LED2 8
-#define LED3 7
-
 // Global Variables
 tCAN message;
 int motorSpeed = 0;
+boolean changedSpeed = false;
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // Port M1
-LiquidCrystal lcd(12,11,5,4,3,2);
-char* barGraph[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
+LiquidCrystal lcd(9,4,5,6,7,8);
 
 
 /* ------------- SETUP ------------- */
 
 void setup()
 {
-  pinMode(LED2, OUTPUT); 
-  pinMode(LED3, OUTPUT); 
-  digitalWrite(LED2, LOW);
-  digitalWrite(LED3, LOW);
-
   pinMode(UP, INPUT);
   pinMode(DOWN, INPUT);
   pinMode(LEFT, INPUT);
@@ -59,7 +50,7 @@ void setup()
 
   Serial.begin(9600);
   Serial.println();
-
+  
   if (Canbus.init(CANSPEED_125)) {
     Serial.println("CAN initialized.");
   } else {
@@ -77,6 +68,9 @@ void setup()
   message.data[6] = 0x00;
   message.data[7] = 0x00;
   
+  attachInterrupt(0,messageISR,FALLING);
+  attachInterrupt(1,joystickISR,FALLING);
+  
   AFMS.begin();
   myMotor->setSpeed(0);
   myMotor->run(FORWARD);
@@ -84,7 +78,7 @@ void setup()
   
   lcd.begin(16,2);
   lcdPrintRPM(0);
-  
+
   Serial.println("Setup Finished.\n");
 }
 
@@ -129,41 +123,50 @@ void loop()
   } else if (digitalRead(CLICK) == 0) {
     Serial.print("CLICK: ");
     if (motorSpeed) {
-      runMotor(0);   // Stop the motor if it is running
+      Serial.println("off");
+      runMotor(0); // Stop the motor if it is running
     } else {
-      runMotor(30);  // Start the motor otherwise
+      Serial.println("on");
+      runMotor(30); // Start the motor otherwise
     }
     delay(300); // Joystick sensitivity
   }
   
-  // Check if there are any new messages waiting
-  if (mcp2515_check_message()) {
-    digitalWrite(LED2, HIGH);
-    Serial.print("CAN: ");
-    if (mcp2515_get_message(&message)) {
-      // Look for the motor control message
-      if (message.header.rtr == 0 && message.id == 0x111) {
-        runMotor(message.data[0]);
-      } else {
-        // Not a motor control message
-        Serial.println("wrong formatting");
-      }
-    } else {
-      // mcp2515_get_message failed
-      Serial.println("error");
-    }
+  if (changedSpeed) {
+    runMotor(motorSpeed);
+    changedSpeed = false;
   }
 }
 
 
 /* ----------- FUNCTIONS ----------- */
 
+void joystickISR(){Serial.println("joystickISR");}
+
+void messageISR(void)
+{
+  Serial.print("CAN: ");
+  if (mcp2515_get_message(&message)) {
+    // Look for the motor control message
+    if (message.header.rtr == 0 && message.id == 0x111) {
+      motorSpeed = message.data[0];
+      changedSpeed = true;
+      Serial.println("ok");
+    } else {
+      // Not a motor control message
+      Serial.println("wrong formatting");
+    }
+   } else {
+    // mcp2515_get_message failed
+    Serial.println("error");
+  }
+}
+
 void sendMessage(tCAN *message)
 {
   if (!mcp2515_check_free_buffer()) {
     Serial.println("buffer is full");
   } else if (mcp2515_send_message(message)) {
-    digitalWrite(LED2, LOW);
     Serial.println("sent");
   } else {
     // mcp2515_send_message failed
@@ -184,8 +187,13 @@ void runMotor(int rpm)
 
 void lcdPrintRPM(int rpm) 
 {
+  char* barGraph[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
+  
   // Re-map the rpm for the bar graph
   int bar = map(rpm,0,256,0,17);
+  
+  // Clear previous text on the display
+  lcd.clear();
   
   // Begin printing on the first row
   lcd.setCursor(0,0);
@@ -195,8 +203,5 @@ void lcdPrintRPM(int rpm)
   // Continue printing on the second row
   lcd.setCursor(0,1);
   lcd.print(barGraph[bar]);
-  
-  delay(50);
-  lcd.clear();
 }
 
