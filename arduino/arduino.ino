@@ -14,16 +14,15 @@
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
 
+//LCD Display
+#include <LiquidCrystal.h>
+
 // Joystick
 #define UP     A1
 #define RIGHT  A2
 #define DOWN   A3
 #define CLICK  A4
 #define LEFT   A5
-
-//LCD Display
-#include <LiquidCrystal.h>
-#include "utility/Adafruit_PWMServoDriver.h"
 
 // LED's
 #define LED2 8
@@ -35,6 +34,7 @@ int motorSpeed = 0;
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // Port M1
 LiquidCrystal lcd(12,11,5,4,3,2);
+char* barGraph[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
 
 
 /* ------------- SETUP ------------- */
@@ -45,10 +45,6 @@ void setup()
   pinMode(LED3, OUTPUT); 
   digitalWrite(LED2, LOW);
   digitalWrite(LED3, LOW);
-  
-  //LCD
-  lcd.begin(16,2); 
-  lcd.print("Motor RMPM");
 
   pinMode(UP, INPUT);
   pinMode(DOWN, INPUT);
@@ -86,8 +82,12 @@ void setup()
   myMotor->run(FORWARD);
   myMotor->run(RELEASE);
   
+  lcd.begin(16,2);
+  lcdPrintRPM(0);
+  
   Serial.println("Setup Finished.\n");
 }
+
 
 /* ------------- LOOP ------------- */
 
@@ -128,10 +128,10 @@ void loop()
     
   } else if (digitalRead(CLICK) == 0) {
     Serial.print("CLICK: ");
-    if (motorSpeed) { // The motor is running
-      runMotor(0);    // Stop the motor
-    } else {          // The motor is not running
-      runMotor(30);   // Start the motor
+    if (motorSpeed) {
+      runMotor(0);   // Stop the motor if it is running
+    } else {
+      runMotor(30);  // Start the motor otherwise
     }
     delay(300); // Joystick sensitivity
   }
@@ -155,6 +155,7 @@ void loop()
   }
 }
 
+
 /* ----------- FUNCTIONS ----------- */
 
 void sendMessage(tCAN *message)
@@ -173,24 +174,29 @@ void sendMessage(tCAN *message)
 
 void runMotor(int rpm)
 {
-  motorSpeed = rpm;
-  myMotor->run(FORWARD);
+  motorSpeed = rpm; // Update the global variable
+  myMotor->run(FORWARD); // Ensure normal operation
   myMotor->setSpeed(rpm);
   Serial.print("RPM ");
   Serial.println(rpm);
   lcdPrintRPM(rpm);
-  }
-  
-void lcdPrintRPM(int i ) 
+}
+
+void lcdPrintRPM(int rpm) 
 {
-  int val;
-  char* Str1[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
+  // Re-map the rpm for the bar graph
+  int bar = map(rpm,0,256,0,17);
+  
+  // Begin printing on the first row
   lcd.setCursor(0,0);
   lcd.print("Motor RPM ");
-  lcd.print(i);
-  val = map(i, 0,256, 0,17);
+  lcd.print(rpm);
+  
+  // Continue printing on the second row
   lcd.setCursor(0,1);
-  lcd.print(Str1[val]);
+  lcd.print(barGraph[bar]);
+  
   delay(50);
   lcd.clear();
-  }
+}
+
