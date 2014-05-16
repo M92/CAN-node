@@ -30,13 +30,13 @@ int motorSpeed = 0;
 boolean changedSpeed = false;
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // Port M1
-LiquidCrystal lcd(9,4,5,6,7,8);
+LiquidCrystal lcd(4,5,6,7,8,9);
 
 
 /* ------------- SETUP ------------- */
 
 void setup()
-{
+{  
   pinMode(UP, INPUT);
   pinMode(DOWN, INPUT);
   pinMode(LEFT, INPUT);
@@ -48,7 +48,7 @@ void setup()
   digitalWrite(RIGHT, HIGH);
   digitalWrite(CLICK, HIGH);
 
-  Serial.begin(9600);
+  //Serial.begin(9600);
   Serial.println();
   
   if (Canbus.init(CANSPEED_125)) {
@@ -69,7 +69,7 @@ void setup()
   message.data[7] = 0x00;
   
   attachInterrupt(0,messageISR,FALLING);
-  attachInterrupt(1,joystickISR,FALLING);
+  //attachInterrupt(1,breakISR,FALLING);
   
   AFMS.begin();
   myMotor->setSpeed(0);
@@ -90,7 +90,7 @@ void loop()
   // Handle joystick input...
   if (digitalRead(UP) == 0) {
     Serial.print("UP: ");
-    message.id = 0x133;
+    message.id = 0x122;
     message.header.rtr = 0;
     message.header.length = 1;
     message.data[0] = 0x01;
@@ -101,7 +101,7 @@ void loop()
     message.id = 0x122;
     message.header.rtr = 0;
     message.header.length = 1;
-    message.data[0] = 0x01;
+    message.data[0] = 0x02;
     sendMessage(&message);
     
   } else if (digitalRead(LEFT) == 0) {
@@ -127,7 +127,7 @@ void loop()
       runMotor(0); // Stop the motor if it is running
     } else {
       Serial.println("on");
-      runMotor(30); // Start the motor otherwise
+      runMotor(26); // Start the motor otherwise
     }
     delay(300); // Joystick sensitivity
   }
@@ -141,17 +141,25 @@ void loop()
 
 /* ----------- FUNCTIONS ----------- */
 
-void joystickISR(){Serial.println("joystickISR");}
+void breakISR()
+{
+  Serial.println("joystickISR");
+}
 
-void messageISR(void)
+void messageISR()
 {
   Serial.print("CAN: ");
   if (mcp2515_get_message(&message)) {
     // Look for the motor control message
     if (message.header.rtr == 0 && message.id == 0x111) {
-      motorSpeed = message.data[0];
-      changedSpeed = true;
-      Serial.println("ok");
+      if (motorSpeed != message.data[0]) {
+        motorSpeed = message.data[0];
+        motorSpeed = map(motorSpeed, 0,107, 0, 255);
+        changedSpeed = true;
+        Serial.println("changed speed");
+      } else {
+        Serial.println("same speed");
+      }
     } else {
       // Not a motor control message
       Serial.println("wrong formatting");
@@ -189,16 +197,23 @@ void lcdPrintRPM(int rpm)
 {
   char* barGraph[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
   
-  // Re-map the rpm for the bar graph
+  // Re-map the rpm for the display
   int bar = map(rpm,0,256,0,17);
+  int percent = map(rpm,0,255,0,100);
   
   // Clear previous text on the display
   lcd.clear();
   
   // Begin printing on the first row
   lcd.setCursor(0,0);
-  lcd.print("Motor RPM ");
-  lcd.print(rpm);
+  lcd.print("Motor ");
+  if (rpm == 0) {
+    lcd.print("Off");
+  } else {
+    lcd.print("RPM ");
+    lcd.print(percent);
+    lcd.print(" %");
+  }
   
   // Continue printing on the second row
   lcd.setCursor(0,1);
