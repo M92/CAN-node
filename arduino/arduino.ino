@@ -1,222 +1,214 @@
+/*
+      Projektgrupp 2:6
+      - - - - - - - -
+      Marcus Thorström
+      Magnus Rising
+      Vidar Åsberg
+      Johan Strand
+      Sanny Mitra
+*/
 
-/* ------------------
-    Projektgrupp 2:6
-   ------------------ */
 
-// CAN Shield
+/* --------------- INCLUDES ---------------- */
+
+// CAN shield
 #include <Canbus.h>
 #include <defaults.h>
 #include <global.h>
 #include <mcp2515.h>
 #include <mcp2515_defs.h>
 
-// Motor Shield
+// Motor shield
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
 
-//LCD Display
+// Display
 #include <LiquidCrystal.h>
 
-// Joystick
-#define UP     A1
-#define RIGHT  A2
-#define DOWN   A3
-#define CLICK  A4
-#define LEFT   A5
 
-// Global Variables
-tCAN message;
-int motorSpeed = 0;
-boolean changedSpeed = false;
-Adafruit_MotorShield AFMS = Adafruit_MotorShield();
-Adafruit_DCMotor *myMotor = AFMS.getMotor(1); // Port M1
+/* ---------------- DEFINES ---------------- */
+
+// Joystick
+#define J_UP       A1
+#define J_RIGHT    A2
+#define J_DOWN     A3
+#define J_CLICK    A4
+#define J_LEFT     A5
+#define J_DELAY    300
+
+// CAN ID's
+#define ID_MOTOR   0x111
+#define ID_UP      0x122
+#define ID_DOWN    0x122
+#define ID_LEFT    0x144
+#define ID_RIGHT   0x144
+
+// CAN DATA
+#define CAN_OFF     0x00
+#define CAN_RPM     0x6B
+#define CAN_UP      0x01
+#define CAN_DOWN    0x02
+#define CAN_LEFT    0x01
+#define CAN_RIGHT   0x02
+
+// Motor control
+#define OFF         0
+#define MAX_RPM     255
+#define MOTOR_PORT  1
+
+
+/* ---------------- GLOBALS ---------------- */
+
+Adafruit_DCMotor *motor;
+int current_speed = OFF;
+boolean new_speed = false;
+
+// LCD with 4 data lines and no RW pin
 LiquidCrystal lcd(4,5,6,7,8,9);
 
 
-/* ------------- SETUP ------------- */
+/* ----------------- SETUP ----------------- */
 
 void setup()
-{  
-  pinMode(UP, INPUT);
-  pinMode(DOWN, INPUT);
-  pinMode(LEFT, INPUT);
-  pinMode(RIGHT, INPUT);
-  pinMode(CLICK, INPUT);
-  digitalWrite(UP, HIGH);
-  digitalWrite(DOWN, HIGH);
-  digitalWrite(LEFT, HIGH);
-  digitalWrite(RIGHT, HIGH);
-  digitalWrite(CLICK, HIGH);
-
-  //Serial.begin(9600);
-  Serial.println();
-  
-  if (Canbus.init(CANSPEED_125)) {
-    Serial.println("CAN initialized.");
-  } else {
-    Serial.println("CAN initialization error!");
-  }
-  message.id = 0x00;
-  message.header.rtr = 0;
-  message.header.length = 0;
-  message.data[0] = 0x00;
-  message.data[1] = 0x00;
-  message.data[2] = 0x00;
-  message.data[3] = 0x00;
-  message.data[4] = 0x00;
-  message.data[5] = 0x00;
-  message.data[6] = 0x00;
-  message.data[7] = 0x00;
-  
-  attachInterrupt(0,messageISR,FALLING);
-  //attachInterrupt(1,breakISR,FALLING);
-  
-  AFMS.begin();
-  myMotor->setSpeed(0);
-  myMotor->run(FORWARD);
-  myMotor->run(RELEASE);
-  
-  lcd.begin(16,2);
-  lcdPrintRPM(0);
-
-  Serial.println("Setup Finished.\n");
+{
+    // Initialize the display
+    lcd.begin(16, 2);
+    
+    // Initialize the CAN shield
+    if (!Canbus.init(CANSPEED_125))
+        print_debug("CAN init error");
+    
+    // Initialize the joystick
+    pinMode(J_UP, INPUT);
+    pinMode(J_DOWN, INPUT);
+    pinMode(J_LEFT, INPUT);
+    pinMode(J_RIGHT, INPUT);
+    pinMode(J_CLICK, INPUT);
+    digitalWrite(J_UP, HIGH);
+    digitalWrite(J_DOWN, HIGH);
+    digitalWrite(J_LEFT, HIGH);
+    digitalWrite(J_RIGHT, HIGH);
+    digitalWrite(J_CLICK, HIGH);
+    
+    // Initialize the motor shield
+    Adafruit_MotorShield motor_shield = Adafruit_MotorShield();
+    motor_shield.begin();
+    
+    // Initialize the motor
+    motor = motor_shield.getMotor(MOTOR_PORT);
+    motor_control(OFF);
+    
+    // Initialize interrupts
+    attachInterrupt(0, receive_message, FALLING);
 }
 
 
-/* ------------- LOOP ------------- */
+/* ----------------- LOOP ------------------ */
 
 void loop()
 {
-  // Handle joystick input...
-  if (digitalRead(UP) == 0) {
-    Serial.print("UP: ");
-    message.id = 0x122;
-    message.header.rtr = 0;
-    message.header.length = 1;
-    message.data[0] = 0x01;
-    sendMessage(&message);
-    
-  } else if (digitalRead(DOWN) == 0) {
-    Serial.print("DOWN: ");
-    message.id = 0x122;
-    message.header.rtr = 0;
-    message.header.length = 1;
-    message.data[0] = 0x02;
-    sendMessage(&message);
-    
-  } else if (digitalRead(LEFT) == 0) {
-    Serial.print("LEFT: ");
-    message.id = 0x144;
-    message.header.rtr = 0;
-    message.header.length = 1;
-    message.data[0] = 0x01;
-    sendMessage(&message);
-    
-  } else if (digitalRead(RIGHT) == 0) {
-    Serial.print("RIGHT: ");
-    message.id = 0x144;
-    message.header.rtr = 0;
-    message.header.length = 1;
-    message.data[0] = 0x02;
-    sendMessage(&message);
-    
-  } else if (digitalRead(CLICK) == 0) {
-    Serial.print("CLICK: ");
-    if (motorSpeed) {
-      Serial.println("off");
-      runMotor(0); // Stop the motor if it is running
-    } else {
-      Serial.println("on");
-      runMotor(26); // Start the motor otherwise
+    // Change the motor speed after interrupts
+    if (new_speed) {
+        motor_control(current_speed);
+        new_speed = false;
     }
-    delay(300); // Joystick sensitivity
-  }
-  
-  if (changedSpeed) {
-    runMotor(motorSpeed);
-    changedSpeed = false;
-  }
-}
-
-
-/* ----------- FUNCTIONS ----------- */
-
-void breakISR()
-{
-  Serial.println("joystickISR");
-}
-
-void messageISR()
-{
-  Serial.print("CAN: ");
-  if (mcp2515_get_message(&message)) {
-    // Look for the motor control message
-    if (message.header.rtr == 0 && message.id == 0x111) {
-      if (motorSpeed != message.data[0]) {
-        motorSpeed = message.data[0];
-        motorSpeed = map(motorSpeed, 0,107, 0, 255);
-        changedSpeed = true;
-        Serial.println("changed speed");
-      } else {
-        Serial.println("same speed");
-      }
-    } else {
-      // Not a motor control message
-      Serial.println("wrong formatting");
+    
+    // Continuously look for joystick input
+    if (digitalRead(J_UP) == 0) {
+        send_message(ID_UP, CAN_UP);
+        delay(J_DELAY);
+    } else if (digitalRead(J_DOWN) == 0) {
+        send_message(ID_DOWN, CAN_DOWN);
+        delay(J_DELAY);
+    } else if (digitalRead(J_LEFT) == 0) {
+        send_message(ID_LEFT, CAN_LEFT);
+        delay(J_DELAY);
+    } else if (digitalRead(J_RIGHT) == 0) {
+        send_message(ID_RIGHT, CAN_RIGHT);
+        delay(J_DELAY);
+    } else if (digitalRead(J_CLICK) == 0) {
+        if (current_speed == OFF)
+            motor_control(MAX_RPM); // Start the motor if it is off
+        else
+            motor_control(OFF);     // Stop the motor if it is running
+        delay(J_DELAY);
     }
-   } else {
-    // mcp2515_get_message failed
-    Serial.println("error");
-  }
 }
 
-void sendMessage(tCAN *message)
+
+/* --------------- FUNCTIONS --------------- */
+
+void receive_message()
 {
-  if (!mcp2515_check_free_buffer()) {
-    Serial.println("buffer is full");
-  } else if (mcp2515_send_message(message)) {
-    Serial.println("sent");
-  } else {
-    // mcp2515_send_message failed
-    Serial.println("error");
-  }
-  delay(300); // Joystick sensitivity
+    tCAN message;
+    
+    // Try to get the new message
+    if (mcp2515_get_message(&message)) {
+        // Look for the motor control message
+        if (message.header.rtr == 0 && message.id == ID_MOTOR) {
+            // Re-map the incoming data to RPM values
+            int rpm = map(message.data[0], CAN_OFF, CAN_RPM, OFF, MAX_RPM);
+            // Only update the speed if it is different
+            if (current_speed != rpm) {
+                current_speed = rpm;
+                new_speed = true;
+            }
+        }
+    }
 }
 
-void runMotor(int rpm)
+void send_message(int id, int data)
 {
-  motorSpeed = rpm; // Update the global variable
-  myMotor->run(FORWARD); // Ensure normal operation
-  myMotor->setSpeed(rpm);
-  Serial.print("RPM ");
-  Serial.println(rpm);
-  lcdPrintRPM(rpm);
+    tCAN message;
+    
+    message.id = id;
+    message.header.rtr = 0;
+    message.header.length = 1;
+    message.data[0] = data;
+    
+    if (!mcp2515_check_free_buffer()) {
+        print_debug("buffer is full");
+    } else if (!mcp2515_send_message(&message)) {
+        print_debug("error sending");
+    }
 }
 
-void lcdPrintRPM(int rpm) 
+void motor_control(int rpm)
 {
-  char* barGraph[17] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||", "|||||||||||||||","||||||||||||||||"};
-  
-  // Re-map the rpm for the display
-  int bar = map(rpm,0,256,0,17);
-  int percent = map(rpm,0,255,0,100);
-  
-  // Clear previous text on the display
-  lcd.clear();
-  
-  // Begin printing on the first row
-  lcd.setCursor(0,0);
-  lcd.print("Motor ");
-  if (rpm == 0) {
-    lcd.print("Off");
-  } else {
-    lcd.print("RPM ");
-    lcd.print(percent);
-    lcd.print(" %");
-  }
-  
-  // Continue printing on the second row
-  lcd.setCursor(0,1);
-  lcd.print(barGraph[bar]);
+    current_speed = rpm;  // Remember the current RPM
+    motor->run(FORWARD);  // Set the direction of rotation
+    motor->setSpeed(rpm); // Change the motor RPM
+    print_rpm(rpm);       // Update the RPM on the display
 }
 
+void print_rpm(int rpm) 
+{
+    // Bar graph for simulating the motor speed on the display
+    char *graph[] = {" ","|","||","|||","||||","|||||","||||||","|||||||","||||||||","|||||||||","||||||||||","|||||||||||","||||||||||||","|||||||||||||","||||||||||||||","|||||||||||||||","||||||||||||||||"};
+    
+    int bar = map(rpm, OFF, MAX_RPM, 0, 16);      // Re-map RPM for the bar graph
+    int percent = map(rpm, OFF, MAX_RPM, 0, 100); // Re-map RPM to percentage
+    
+    lcd.clear();         // Clear the current text on the display
+    lcd.setCursor(0, 0); // Begin printing on the first row
+    lcd.print("Motor ");
+    if (rpm == OFF) {
+        lcd.print("Off");
+    } else {
+        lcd.print("RPM ");
+        lcd.print(percent);
+        lcd.print(" %");
+    }
+    lcd.setCursor(0, 1);   // Continue printing on the second row
+    lcd.print(graph[bar]); // Print the bar graph
+}
+
+void print_debug(const char *info) 
+{
+    lcd.clear();         // Clear the current text on the display
+    lcd.setCursor(0, 0); // Begin printing on the first row
+    lcd.print("DEBUG");
+    lcd.setCursor(0, 1); // Continue printing on the second row
+    lcd.print(info);
+    delay(5000);         // Pause for readability
+}
